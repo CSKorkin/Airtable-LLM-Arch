@@ -46,5 +46,18 @@ variable "OPENAI_API_KEY" {
   sensitive   = true
 }
 
-variable "aws_region" { type = string default = "us-east-1" }
-variable "tags" { type = map(string) default = { project = "airtable-svc" } }
+variable "aws_region" {
+  type    = string
+  default = "us-east-1"
+}
+
+variable "tags" {
+  type    = map(string)
+  default = { project = "airtable-svc" }
+}
+
+variable "aws_profile" {
+	description = "AWS profile name to use"
+	type        = string
+	default     = "personal"
+}

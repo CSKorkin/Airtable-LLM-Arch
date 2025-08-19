@@ -1,2 +1,5 @@
-# Never commit the actual API keys
 terraform/terraform.tfvars
+dist/**
+terraform/.terraform/**
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate

@@ -9,17 +9,23 @@ resource "aws_ssm_parameter" "third_party_api_key" {
 data "aws_iam_policy_document" "assume" {
   statement {
     actions = ["sts:AssumeRole"]
-    principals { type = "Service" identifiers = ["lambda.amazonaws.com"] }
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
   }
 }
+
 resource "aws_iam_role" "lambda_role" {
   name               = "airtable-svc-lambda-role"
   assume_role_policy = data.aws_iam_policy_document.assume.json
 }
+
 resource "aws_iam_role_policy_attachment" "basic" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
+
 # Allow reading SSM parameters
 resource "aws_iam_policy" "ssm_read" {
   name   = "airtable-svc-ssm-read"
@@ -32,6 +38,7 @@ resource "aws_iam_policy" "ssm_read" {
     }]
   })
 }
+
 resource "aws_iam_role_policy_attachment" "ssm_read_attach" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = aws_iam_policy.ssm_read.arn
@@ -43,8 +50,10 @@ resource "aws_lambda_function" "create_json_fn" {
   role          = aws_iam_role.lambda_role.arn
   handler       = "handler.handler"
   runtime       = "python3.11"
-  filename      = "../dist/create_lambda.zip"
-  source_code_hash = filebase64sha256("dist/create_lambda.zip")
+
+  # note: terraform/ is your cwd; zips live one level up
+  filename         = "../dist/create_lambda.zip"
+  source_code_hash = filebase64sha256("../dist/create_lambda.zip")
 
   environment {
     variables = {
@@ -60,18 +69,19 @@ resource "aws_lambda_function" "create_json_fn" {
   }
 
   ephemeral_storage { size = 10240 } # MB (10GB max)
-  timeout = 60  # seconds; raise if needed (max 900)
-  memory_size = 512
+  timeout      = 60
+  memory_size  = 512
 }
 
 # --- Lambda: decompress_json ---
 resource "aws_lambda_function" "decompress_json_fn" {
-  function_name    = "decompress-json-fn"
-  role             = aws_iam_role.lambda_role.arn
-  handler          = "handler.handler"
-  runtime          = "python3.11"
+  function_name = "decompress-json-fn"
+  role          = aws_iam_role.lambda_role.arn
+  handler       = "handler.handler"
+  runtime       = "python3.11"
+
   filename         = "../dist/decompress_lambda.zip"
-  source_code_hash = filebase64sha256("dist/decompress_lambda.zip")
+  source_code_hash = filebase64sha256("../dist/decompress_lambda.zip")
 
   environment {
     variables = {
@@ -85,10 +95,9 @@ resource "aws_lambda_function" "decompress_json_fn" {
     }
   }
 
-
   ephemeral_storage { size = 10240 }
-  timeout     = 120
-  memory_size = 1024
+  timeout      = 120
+  memory_size  = 1024
 }
 
 # --- HTTP API (API Gateway v2) ---
@@ -110,6 +119,7 @@ resource "aws_apigatewayv2_integration" "create_integ" {
   integration_uri        = aws_lambda_function.create_json_fn.invoke_arn
   payload_format_version = "2.0"
 }
+
 resource "aws_apigatewayv2_integration" "decompress_integ" {
   api_id                 = aws_apigatewayv2_api.http.id
   integration_type       = "AWS_PROXY"
@@ -123,6 +133,7 @@ resource "aws_apigatewayv2_route" "create_route" {
   route_key = "POST /create-json"
   target    = "integrations/${aws_apigatewayv2_integration.create_integ.id}"
 }
+
 resource "aws_apigatewayv2_route" "decompress_route" {
   api_id    = aws_apigatewayv2_api.http.id
   route_key = "POST /decompress-json"
@@ -137,6 +148,7 @@ resource "aws_lambda_permission" "create_allow_invoke" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
 }
+
 resource "aws_lambda_permission" "decompress_allow_invoke" {
   statement_id  = "AllowAPIGInvokeDecompress"
   action        = "lambda:InvokeFunction"
@@ -145,4 +157,6 @@ resource "aws_lambda_permission" "decompress_allow_invoke" {
   source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
 }
 
-output "base_url" { value = aws_apigatewayv2_api.http.api_endpoint }
+output "base_url" {
+  value = aws_apigatewayv2_api.http.api_endpoint
+}

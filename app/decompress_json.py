@@ -31,15 +31,17 @@ def main():
         salary_preferences = applicant_data["Salary Preferences"]
 
         # Populate the Personal Details table
-        new_details = {"Applicant": [applicant["id"]], "Full Name": personal_details["Full Name"], "Email": personal_details["Email"], "LinkedIn": personal_details["LinkedIn"], "Location": personal_details["Location"]}
+        if len(personal_details) > 0:
+            new_details = {"Applicant": [applicant["id"]], "Full Name": personal_details["Full Name"], "Email": personal_details["Email"], "LinkedIn": personal_details["LinkedIn"], "Location": personal_details["Location"]}
         details_table.create(new_details)
         # Populate the Work Experience table
         for work in work_experience:
             new_work = {"Applicant": [applicant["id"]], "Company": work["Company"], "Title": work["Title"], "Start": work["Start Date"], "End": work["End Date"], "Technologies": work["Technologies"]}
             work_table.create(new_work)
         # Populate the Salary Preferences table
-        new_salary = {"Applicant": [applicant["id"]], "Preferred Rate": salary_preferences["Preferred Rate"], "Currency": salary_preferences["Currency"], "Minimum Rate": salary_preferences["Minimum Rate"], "Availability (hrs/week)": salary_preferences["Availability (hrs/week)"]}
-        salary_table.create(new_salary)
+        if len(salary_preferences) > 0:
+            new_salary = {"Applicant": [applicant["id"]], "Preferred Rate": salary_preferences["Preferred Rate"], "Currency": salary_preferences["Currency"], "Minimum Rate": salary_preferences["Minimum Rate"], "Availability (hrs/week)": salary_preferences["Availability (hrs/week)"]}
+            salary_table.create(new_salary)
 
 if __name__ == "__main__":
     main()

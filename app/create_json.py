@@ -27,6 +27,7 @@ def main():
         work_experience = work_table.all(formula='IF({Applicant}="' + applicant_id + '",TRUE(),FALSE())')
         salary_preferences = salary_table.all(formula='IF({Applicant}="' + applicant_id + '",TRUE(),FALSE())')
         all_work_experience = []
+        complete = True
 
         # Clean up the data so it looks better in the JSON
         for work in work_experience:
@@ -39,11 +40,19 @@ def main():
             }
             all_work_experience.append(work_experience_data)
         
-        salary_preferences[0]["fields"].pop("Salary Preference ID")
-        salary_preferences[0]["fields"].pop("Applicant")
+        if len(work_experience) == 0:
+            complete = False
 
-        personal_details[0]["fields"].pop("Applicant")
-
+        if len(salary_preferences) > 0:
+            salary_preferences[0]["fields"].pop("Salary Preference ID")
+            salary_preferences[0]["fields"].pop("Applicant")
+        else:
+            complete = False
+        if len(personal_details) > 0:
+            personal_details[0]["fields"].pop("Applicant ID")
+        else:
+            complete = False
+        
         applicant_data = {
             "Personal Details": personal_details[0]["fields"],
             "Work Experience": all_work_experience,
@@ -53,35 +62,40 @@ def main():
         try:
             applicant_table.update(applicant["id"], {"Applicant ID": applicant_id, "Compressed JSON": json.dumps(applicant_data)})
             applicant_data_table.append({"id": applicant["id"], "data": applicant_data})
+            print(f"Updated JSON for {applicant_id}")
         except Exception as e:
             print(f"Error updating applicant {applicant_id}: {e}")
 
-        # Evaluate the applicant and add to shortlist if they meet the criteria
-        passed, explanation = evaluate_applicant(applicant_data)
-        if passed:
-            shortlist = shortlist_table.all(formula='IF({Applicant}="' + applicant_id + '",TRUE(),FALSE())')
-            if len(shortlist) == 0:
-                shortlist_table.create(fields={
-                    "Applicant": [applicant["id"]],
-                    "Score Reason": explanation,
-                    "Compressed JSON": json.dumps(applicant_data)
-                    }
-                )
-                applicant_table.update(applicant["id"], {"Shortlist Status": "Shortlisted"})
-            else:
-                shortlist_table.update(shortlist[0]["id"], {
-                    "Applicant": [applicant["id"]],
-                    "Score Reason": explanation, 
-                    "Compressed JSON": json.dumps(applicant_data)
-                    }
-                )
-        
-        # If the applicant data has changed, run the LLM eval
-        if applicant_data != old_applicant_data:
-            Summary, Score, _, FollowUps = LLM_eval(applicant_data)
-            # Convert FollowUps to a nicely formatted list of bullets
-            FollowUps = "\n".join([f"- {followUp}" for followUp in FollowUps])
-            applicant_table.update(applicant["id"], {"Applicant ID": applicant_id, "Compressed JSON": json.dumps(applicant_data),"LLM Summary": Summary, "LLM Score": Score, "LLM Follow-Ups": FollowUps})
+        if complete:
+            # Evaluate the applicant and add to shortlist if they meet the criteria
+            passed, explanation = evaluate_applicant(applicant_data)
+            if passed:
+                shortlist = shortlist_table.all(formula='IF({Applicant}="' + applicant_id + '",TRUE(),FALSE())')
+                if len(shortlist) == 0:
+                    shortlist_table.create(fields={
+                        "Applicant": [applicant["id"]],
+                        "Score Reason": explanation,
+                        "Compressed JSON": json.dumps(applicant_data)
+                        }
+                    )
+                    applicant_table.update(applicant["id"], {"Shortlist Status": "Shortlisted"})
+                    print(f"Added {applicant_id} to shortlist")
+                else:
+                    shortlist_table.update(shortlist[0]["id"], {
+                        "Applicant": [applicant["id"]],
+                        "Score Reason": explanation, 
+                        "Compressed JSON": json.dumps(applicant_data)
+                        }
+                    )
+                    print(f"Updated {applicant_id} in shortlist")
+            # If the applicant data has changed, run the LLM eval
+            if applicant_data != old_applicant_data:
+                print(f"Running LLM eval for {applicant_id}")
+                Summary, Score, _, FollowUps = LLM_eval(applicant_data)
+                print(f"LLM eval complete for {applicant_id}")
+                # Convert FollowUps to a nicely formatted list of bullets
+                FollowUps = "\n".join([f"- {followUp}" for followUp in FollowUps])
+                applicant_table.update(applicant["id"], {"Applicant ID": applicant_id, "Compressed JSON": json.dumps(applicant_data),"LLM Summary": Summary, "LLM Score": Score, "LLM Follow-Ups": FollowUps})
 
 def currency_lookup(currency_code):
     return get_exchange_rates(currency_code.upper(), target_currencies=["USD"])["USD"]
@@ -184,7 +198,8 @@ def LLM_eval(applicant_data):
                 """},
                 {"role": "user", "content": "Evaluate the following applicant: " + json.dumps(applicant_data)}
             ],
-            max_completion_tokens=10000
+            max_completion_tokens=10000,
+            timeout=15
         )
             response_json = json.loads(response.choices[0].message.content)
             return response_json["Summary"], response_json["Score"], response_json["Issues"], response_json["Follow-Ups"]

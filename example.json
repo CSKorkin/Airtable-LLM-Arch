@@ -1,0 +1,30 @@
+{
+	"Personal Details": {
+		"Full Name": "Alex Johnson", 
+		"Email": "alex.johnson@example.com", 
+		"LinkedIn": "linkedin.com/in/alexjohnson", 
+		"Location": "New York, USA"
+	}, 
+	"Work Experience": [
+		{
+			"Company": "TechNova", 
+			"Title": "Software Engineer", 
+			"Start Date": "2019-06-01", 
+			"End Date": "2022-08-01", 
+			"Technologies": "Python, React, AWS"
+		}, 
+		{
+			"Company": "Google", 
+			"Title": "Backend Developer", 
+			"Start Date": "2017-01-01", 
+			"End Date": "2019-05-01", 
+			"Technologies": "Node.js, PostgreSQL, Docker"
+		}
+	], 
+	"Salary Preferences": {
+		"Preferred Rate": 120000, 
+		"Minimum Rate": 100000, 
+		"Currency": "USD", 
+		"Availability (hrs/week)": 40
+	}
+}

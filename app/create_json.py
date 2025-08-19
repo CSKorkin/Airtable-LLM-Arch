@@ -3,7 +3,7 @@ from pyairtable import Api
 import json
 from openai import OpenAI
 from datetime import datetime
-from exchange_rates import get_exchange_rates
+from app.exchange_rates import get_exchange_rates
 import time
 
 api = Api(os.getenv("AIRTABLE_API_KEY"))

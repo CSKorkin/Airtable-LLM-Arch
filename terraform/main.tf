@@ -50,6 +50,7 @@ resource "aws_lambda_function" "create_json_fn" {
   role          = aws_iam_role.lambda_role.arn
   handler       = "handler.handler"
   runtime       = "python3.11"
+  architectures = ["x86_64"]
 
   # note: terraform/ is your cwd; zips live one level up
   filename         = "../dist/create_lambda.zip"
@@ -79,6 +80,7 @@ resource "aws_lambda_function" "decompress_json_fn" {
   role          = aws_iam_role.lambda_role.arn
   handler       = "handler.handler"
   runtime       = "python3.11"
+  architectures = ["x86_64"]
 
   filename         = "../dist/decompress_lambda.zip"
   source_code_hash = filebase64sha256("../dist/decompress_lambda.zip")

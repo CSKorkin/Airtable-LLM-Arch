@@ -12,14 +12,19 @@ Use this pipeline to keep a denormalized snapshot of each applicant, auto-shortl
 
 ### Repository layout
 
-- `create_json.py`: Main ingestion, compression, shortlist evaluation, and LLM enrichment.
-- `decompress_json.py`: Rebuilds normalized tables from `Compressed JSON`.
-- `exchange_rates.py`: ECB-backed exchange rates with on-disk caching.
 - `example.json`: Example of the compressed applicant JSON shape.
+- `app/`: Python package containing the pipeline modules consumed locally and by Lambda.
+- `app/create_json.py`: Main ingestion, compression, shortlist evaluation, and LLM enrichment.
+- `app/decompress_json.py`: Rebuilds normalized tables from `Compressed JSON`.
+- `app/exchange_rates.py`: ECB-backed exchange rates with on-disk caching.
+- `lambdas/`: Lightweight AWS Lambda handlers that invoke the corresponding `app` module entrypoints.
+- `terraform/`: Infrastructure as Code for Lambdas, IAM, and HTTP API Gateway.
+- `Makefile`: Build and deploy commands (`make build`, `make deploy`).
+- `build/`, `dist/`: Build workspace and deployment artifacts created by `make`.
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.11+
 - Airtable base with the tables/fields listed below
 - API keys:
   - Airtable API key and Base/Table IDs
@@ -29,7 +34,7 @@ Use this pipeline to keep a denormalized snapshot of each applicant, auto-shortl
 - pyairtable 
 - openai 
 - requests
-```
+
 
 
 ### Configuration
@@ -90,12 +95,12 @@ The scripts assume the following tables and fields (names are case-sensitive):
 
 Note: `decompress_json.py` is a destructive operation against the tables (`Personal Details`, `Work Experience`, `Salary Preferences`) and assumes they can be safely cleared and repopulated. It calls `batch_delete` on those tables at startup. Data stored in the Compressed JSON field is considered the source of truth - if information is added and `decompress_json.py` is run before `create_json.py` all uncompressed data will be lost.
 
-### Usage
+### Usage (local)
 
 - **Generate compressed JSON, evaluate, and write back to Airtable**
 
   ```bash
-  python create_json.py
+  python -m app.create_json
   ```
 
   What it does:
@@ -108,7 +113,7 @@ Note: `decompress_json.py` is a destructive operation against the tables (`Perso
 - **Decompress (rehydrate) normalized tables from `Compressed JSON`**
 
   ```bash
-  python decompress_json.py
+  python -m app.decompress_json
   ```
 
   What it does:
@@ -146,6 +151,73 @@ Note: `decompress_json.py` is a destructive operation against the tables (`Perso
   - Expects a JSON object with fields: `Summary`, `Score`, `Issues`, `Follow-Ups`.
   - Writes these back to the `Applicants` table.
   - Implements a max return token threshold of 10,000 tokens. If the model errors, it will retry up to 3 times with increasing backoff 
+
+### Packaging and local execution
+
+- The application code lives in the `app` package. This allows Lambdas to import `app.*` modules, and requires local execution via the Python module flag (`-m`).
+- Recommended runtime: Python 3.11 (matches Lambda and the `Makefile`).
+- Install deps locally and run as modules:
+
+  ```bash
+  python3.11 -m venv .venv
+  source .venv/bin/activate
+  pip install -r requirements.txt
+
+  # Run the pipelines locally
+  python -m app.create_json
+  python -m app.decompress_json
+  ```
+
+### Build and deploy (Terraform & AWS)
+
+This repo includes Terraform IaC to provision two AWS Lambda functions and an HTTP API Gateway with routes for each function.
+
+- Artifacts are built into `dist/create_lambda.zip` and `dist/decompress_lambda.zip` using the `Makefile`.
+- Terraform then points each Lambda to the corresponding zip.
+
+Prerequisites:
+- Terraform 1.5+
+- AWS account and credentials configured (profile or env vars)
+- Python 3.11 available locally for packaging
+
+Quick start:
+
+```bash
+# Build deployment artifacts and apply Terraform
+make deploy
+
+# Or run steps manually
+make build
+terraform -chdir=terraform init
+terraform -chdir=terraform apply
+```
+
+Terraform variables:
+- Supplied via `terraform/terraform.tfvars` (sensitive values). Keys expected:
+  - `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID`, `AIRTABLE_APPLICANTS_ID`, `AIRTABLE_DETAILS_ID`, `AIRTABLE_WORK_ID`, `AIRTABLE_SALARY_ID`, `AIRTABLE_SHORTLIST_ID`, `OPENAI_API_KEY`
+  - Optional: `aws_region` (default `us-east-1`), `aws_profile` (default `personal`)
+
+Notes:
+- The Lambdas are granted permission to read SSM parameters under path `/airtable-svc/*` to support future secret management. Current environment variables are passed directly via Terraform variables.
+- The `Makefile` creates a local virtual environment only for building the zips; your global environment is unaffected.
+
+### HTTP API (after deploy)
+
+Terraform outputs the base URL of the HTTP API (`base_url`). Endpoints:
+
+- `POST {base_url}/create-json` → invokes the compression/shortlisting job
+- `POST {base_url}/decompress-json` → invokes the decompression job
+
+Example:
+
+```bash
+curl -X POST "$(terraform -chdir=terraform output -raw base_url)/create-json"
+```
+
+### Security and secrets
+
+- Prefer providing variables via environment (e.g., `TF_VAR_OPENAI_API_KEY=... terraform -chdir=terraform apply`) or store them in AWS SSM Parameter Store and reference them from Lambda at runtime.
+- Rotate any keys that may have been exposed.
 
 ### Example compressed JSON
 
@@ -186,7 +258,6 @@ Note: `decompress_json.py` is a destructive operation against the tables (`Perso
 
 - **Environment loading**: Ensure all required env vars are present in your shell before running the scripts.
 - **Caching**: `exchange_rates.py` caches the ECB CSV in your temp directory for 24 hours.
-- **Breakpoints**: There are `breakpoint()` calls in `create_json.py` (both in `evaluate_applicant` and `LLM_eval`) useful for debugging. Remove or comment them out for non-interactive/automation runs.
 - **Airtable formulas**: Filtering by `Applicant` uses a formula in `create_json.py`. If `Applicant` is a linked-record field, you may prefer a formula like `FIND("<record_id>", ARRAYJOIN({Applicant}))` depending on your base setup.
 
 ### Troubleshooting
@@ -205,4 +276,4 @@ Note: `decompress_json.py` is a destructive operation against the tables (`Perso
 
 ### Credits
 
-`exchange_rates.py` is adapted from and credits: `https://github.com/ddofborg/exchange_rates` and uses the [ECB eurofxref history](https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip).
+`exchange_rates.py` is adapted from `https://github.com/ddofborg/exchange_rates` and uses the [ECB eurofxref history](https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip).

@@ -50,8 +50,6 @@ export AIRTABLE_DETAILS_ID=tblDetailsXXXXXXXX
 export OPENAI_API_KEY=your_openai_api_key
 ```
 
-If you prefer a `.env` file, add the above lines there and ensure your shell loads it before running the scripts.
-
 ### Airtable base schema
 
 The scripts assume the following tables and fields (names are case-sensitive):
